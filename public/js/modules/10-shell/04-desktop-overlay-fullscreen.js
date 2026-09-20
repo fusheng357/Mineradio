@@ -1393,6 +1393,92 @@ function applyDesktopLyricsState(force) {
   }
   pushDesktopLyricsState(!!force);
 }
+// ===== 漫步者花再 Halo PixelBar 歌词屏 =====
+var haloPixelBarState = { enabled: false, supported: false, connected: false, inited: false };
+var haloPixelBarLastPushAt = 0;
+var haloPixelBarLastKey = '';
+
+function initHaloPixelBarBridge() {
+  var api = getDesktopWindowApi();
+  if (!api || haloPixelBarState.inited) return;
+  haloPixelBarState.inited = true;
+  if (typeof api.onHaloPixelBarState === 'function') {
+    try {
+      api.onHaloPixelBarState(function (status) {
+        if (!status) return;
+        haloPixelBarState.enabled = !!status.enabled;
+        haloPixelBarState.supported = !!status.supported;
+        haloPixelBarState.connected = !!status.connected;
+      });
+    } catch (_) { }
+  }
+  if (typeof api.getHaloPixelBarStatus === 'function') {
+    Promise.resolve().then(function () { return api.getHaloPixelBarStatus(); }).then(function (res) {
+      var status = res && res.status;
+      if (!status) return;
+      haloPixelBarState.enabled = !!status.enabled;
+      haloPixelBarState.supported = !!status.supported;
+      haloPixelBarState.connected = !!status.connected;
+    }).catch(function () { });
+  }
+}
+
+function setHaloPixelBarEnabled(enabled, opts) {
+  var api = getDesktopWindowApi();
+  if (!api || typeof api.setHaloPixelBarEnabled !== 'function') {
+    if (typeof showToast === 'function') showToast('当前环境不支持 Halo PixelBar');
+    return Promise.resolve({ ok: false, error: 'API_UNAVAILABLE' });
+  }
+  return api.setHaloPixelBarEnabled(!!enabled, opts || {}).then(function (res) {
+    var status = res && res.status;
+    if (status) {
+      haloPixelBarState.enabled = !!status.enabled;
+      haloPixelBarState.supported = !!status.supported;
+      haloPixelBarState.connected = !!status.connected;
+    }
+    if (typeof showToast === 'function') {
+      if (status && status.enabled && !status.supported) showToast('未检测到 node-hid，请先安装依赖');
+      else if (status && status.enabled && !status.connected) showToast('已开启，但未找到 Halo PixelBar 设备');
+      else if (status && status.enabled) showToast('Halo PixelBar 歌词已开启');
+      else showToast('Halo PixelBar 歌词已关闭');
+    }
+    return res;
+  }).catch(function (e) { console.warn('halo pixelbar enable failed:', e); return { ok: false }; });
+}
+
+function tickHaloPixelBarSync() {
+  initHaloPixelBarBridge();
+  if (!haloPixelBarState.enabled) return;
+  var api = getDesktopWindowApi();
+  if (!api || typeof api.pushHaloPixelBarLyric !== 'function') return;
+  var now = performance.now();
+  if (now - haloPixelBarLastPushAt < 200) return;
+  var lyric = currentDesktopLyricSnapshot();
+  var meta = currentDesktopSongMeta();
+  var key = meta.title + '|' + meta.artist + '|' + lyric.text;
+  if (key === haloPixelBarLastKey && now - haloPixelBarLastPushAt < 900) return;
+  haloPixelBarLastPushAt = now;
+  haloPixelBarLastKey = key;
+  api.pushHaloPixelBarLyric({
+    text: lyric.text,
+    title: meta.title,
+    artist: meta.artist,
+    playing: !!playing,
+  }).then(function (res) {
+    if (res && res.ok === false && res.error && res.error.indexOf('NODE_HID') >= 0) {
+      haloPixelBarState.supported = false;
+    }
+  }).catch(function () { });
+}
+
+window.mineradioHaloPixelBar = {
+  setEnabled: setHaloPixelBarEnabled,
+  status: function () { var api = getDesktopWindowApi(); return api && api.getHaloPixelBarStatus ? api.getHaloPixelBarStatus() : Promise.resolve({ ok: false }); },
+  listDevices: function () { var api = getDesktopWindowApi(); return api && api.listHaloPixelBarDevices ? api.listHaloPixelBarDevices() : Promise.resolve({ ok: false, devices: [] }); },
+  configure: function (opts) { var api = getDesktopWindowApi(); return api && api.configureHaloPixelBar ? api.configureHaloPixelBar(opts || {}) : Promise.resolve({ ok: false }); },
+  sendText: function (text) { var api = getDesktopWindowApi(); return api && api.sendHaloPixelBarText ? api.sendHaloPixelBarText(text) : Promise.resolve({ ok: false }); },
+};
+// ===== Halo PixelBar 结束 =====
 function pushWallpaperState(force) {
   var api = getDesktopWindowApi();
   if (!api || typeof api.updateWallpaperMode !== 'function') return;
@@ -1448,6 +1534,7 @@ function syncDesktopOverlayState() {
 setInterval(function () {
   if (fx && fx.desktopLyrics) syncDesktopOverlayState();
   if (fx && fx.wallpaperMode) ensureDesktopWallpaperFunctionalUi('health-watch');
+  tickHaloPixelBarSync();
 }, 320);
 
 // 全屏

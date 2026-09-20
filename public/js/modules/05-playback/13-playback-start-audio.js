@@ -1246,6 +1246,19 @@ async function playQueueAt(idx, opts) {
         showSourceFallbackNotice('音质已切换', '实际播放: ' + resolvedQualityText + '。');
       }
       if (data.trial) {
+        // 试听自动升级: 当前平台只给试听时, 若其它已登录平台(如酷狗概念版 VIP)能播完整版, 先自动换源.
+        // 非破坏性: 找不到完整源时 tryUpgradeTrialPlaybackToFullSource 返回 null, 下面照常播放试听.
+        if (
+          !opts.startupAutoplay
+          && !opts.sourceSwitch
+          && !albumGaplessHandoff
+          && (opts.fallbackDepth | 0) === 0
+          && typeof tryUpgradeTrialPlaybackToFullSource === 'function'
+        ) {
+          var trialUpgradeResult = await tryUpgradeTrialPlaybackToFullSource(song, data, idx, token, retryPlaybackOpts);
+          if (trialUpgradeResult !== null) return trialUpgradeResult === true;
+          if (token !== trackSwitchToken) return false;
+        }
         var txt;
         if (data.loggedIn && data.vipLevel === 'svip') txt = '此歌曲需要单曲、专辑购买或更高权限';
         else if (data.loggedIn && data.vipLevel === 'vip') txt = '此歌曲需要 SVIP 或购买 · 当前仅播放试听片段';

@@ -744,6 +744,76 @@ async function tryAutoPlaybackFallback(song, data, idx, token, opts) {
   }
   return await skipFailedQueueItem(idx, token, '没有找到可播放的已登录平台版本，正在播放下一首。', skipOpts);
 }
+// 试听自动升级: 当前平台只返回试听片段(如网易云未登录)时, 尝试在其它已登录平台
+// (如酷狗概念版 VIP)找到同名同歌手的完整(非试听)版本并无缝切换过去.
+// 与 tryAutoPlaybackFallback 不同, 本函数是非破坏性的:
+//   - 找不到完整版本时不做任何改动, 返回 null, 调用方继续播放原试听;
+//   - 只有确认拿到完整地址后才提交切换, 切换启动失败会还原并回退播放原试听.
+// 返回: null=未改动(继续播原试听); true=已切换到完整源; false=已被其它播放接管或回退也失败.
+async function tryUpgradeTrialPlaybackToFullSource(song, data, idx, token, opts) {
+  opts = opts || {};
+  if (!song || song.type === 'local' || song.type === 'podcast' || song.source === 'podcast' || song.localUrl) return null;
+  if ((opts.fallbackDepth | 0) > 0) return null;
+  if (typeof searchAlternatePlatformSong !== 'function' || typeof resolveAlbumGaplessPlaybackData !== 'function' || typeof playQueueAt !== 'function') return null;
+  var alternateProviders = typeof alternatePlaybackProviders === 'function' ? alternatePlaybackProviders(song) : [];
+  if (!alternateProviders.length) return null;
+  var fromLabel = typeof playbackProviderLabel === 'function' ? playbackProviderLabel(song) : '当前平台';
+  for (var providerIndex = 0; providerIndex < alternateProviders.length; providerIndex++) {
+    var provider = alternateProviders[providerIndex];
+    if (token !== trackSwitchToken || currentIdx !== idx) return false;
+    var alternate = null;
+    try { alternate = await searchAlternatePlatformSong(song, provider, null); }
+    catch (e) { alternate = null; }
+    if (token !== trackSwitchToken || currentIdx !== idx) return false;
+    if (!alternate) continue;
+    var alternateData = null;
+    try { alternateData = await resolveAlbumGaplessPlaybackData(alternate); }
+    catch (e) { alternateData = null; }
+    if (token !== trackSwitchToken || currentIdx !== idx) return false;
+    // 只接受完整(非试听)地址; 若其它平台也只有试听, 保留原试听, 不做切换.
+    if (!alternateData || !alternateData.url || alternateData.trial) continue;
+    var targetLabel = typeof sourceFallbackProviderTitle === 'function' ? sourceFallbackProviderTitle(provider) : provider;
+    if (!opts.startupAutoplay && typeof showSourceFallbackNotice === 'function') {
+      showSourceFallbackNotice('正在切换完整音源', fromLabel + ' 仅试听，正在切换到 ' + targetLabel + ' 的完整版本。');
+    }
+    var originalSong = playQueue[idx];
+    alternate.autoFallbackFrom = typeof songProviderKey === 'function' ? songProviderKey(song) : '';
+    alternate.trialUpgradedFrom = fromLabel;
+    var committed = typeof hydrateCustomCover === 'function' ? hydrateCustomCover(alternate) : alternate;
+    playQueue[idx] = committed;
+    if (typeof safeRenderQueuePanel === 'function') safeRenderQueuePanel('trial-upgrade-provisional', { scrollCurrent: typeof miniQueueOpen !== 'undefined' ? miniQueueOpen : false });
+    if (typeof safeShelfRebuild === 'function') safeShelfRebuild('trial-upgrade-provisional');
+    var playOpts = {
+      fallbackDepth: 1,
+      startupAutoplay: !!opts.startupAutoplay,
+      preserveHomeState: !!opts.preserveHomeState,
+      suppressPlayFailureNotice: true,
+      preResolvedPlaybackData: alternateData,
+      fallbackOriginalSong: originalSong,
+      fallbackCandidateSong: committed,
+      qqQualityTried: ['hires', 'lossless', 'exhigh', 'standard']
+    };
+    if (opts.resumeAt != null) playOpts.resumeAt = opts.resumeAt;
+    var fallbackPromise = playQueueAt(idx, playOpts);
+    var fallbackToken = trackSwitchToken;
+    var started = await fallbackPromise;
+    if (started === true) {
+      if (fallbackToken === trackSwitchToken && !opts.startupAutoplay && typeof showSourceFallbackNotice === 'function') {
+        showSourceFallbackNotice('已切换到完整音源', (song.name || song.title || '当前歌曲') + ' 已从 ' + fromLabel + ' 试听切到 ' + targetLabel + '。');
+      }
+      return true;
+    }
+    if (fallbackToken !== trackSwitchToken) return false;
+    // 完整源启动失败: 还原原曲目并回退播放原试听片段, 保证用户至少能听到试听.
+    if (typeof restoreSourceFallbackQueueItem === 'function') restoreSourceFallbackQueueItem(idx, originalSong, committed, fallbackToken);
+    if (currentIdx === idx && playQueue[idx] && typeof sourceFallbackSongKey === 'function'
+      && sourceFallbackSongKey(playQueue[idx]) === sourceFallbackSongKey(committed)) playQueue[idx] = originalSong;
+    var replayOpts = Object.assign({}, opts, { preResolvedPlaybackData: data, fallbackDepth: 1, suppressPlayFailureNotice: true });
+    var replayStarted = await playQueueAt(idx, replayOpts);
+    return replayStarted === true;
+  }
+  return null;
+}
 function handlePlaybackUnavailable(song, data) {
   hideLoading();
   forcePlaybackControlsInteractive();

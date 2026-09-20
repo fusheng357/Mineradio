@@ -54,6 +54,7 @@ var qishuiManualCookieOpen = false;
 var loginStatusChecked = false, loginStatusCheckFailed = false;
 var qrPollTimer = null, qrKey = null;
 var qishuiQrPollBusy = false, qishuiQrPollGeneration = 0;
+var kugouConceptQrBusy = false, kugouConceptQrPollBusy = false, kugouConceptQrPollGeneration = 0;
 var volumeTween = null, trackSwitchToken = 0;
 var audioFadeTimer = null, audioElementFadeFrame = 0, audioFadeSerial = 0;
 var playbackResumeRecovery = { serial: 0, pending: false, lastAttemptAt: 0, lastReason: '', pausedAt: 0, pausedSongKey: '', pausedSrc: '', pausedPosition: 0, timerIds: [] };

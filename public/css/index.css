@@ -17401,18 +17401,6 @@ body.panel-reordering .mini-queue-item.is-reordering {
   overflow: hidden
 }
 
-#empty-home .home-hero {
-  grid-column: 1;
-  grid-row: 1 / span 2;
-  min-height: 0;
-  height: 100%;
-  padding: 0;
-  contain: layout paint style;
-  isolation: isolate;
-  transform: translateZ(0);
-  backface-visibility: hidden
-}
-
 #empty-home .daily-review-card {
   position: relative;
   z-index: 2;
@@ -18193,12 +18181,6 @@ body.panel-reordering .mini-queue-item.is-reordering {
     overflow: auto
   }
 
-  #empty-home .home-hero {
-    grid-column: 1;
-    grid-row: 1;
-    height: auto
-  }
-
   #empty-home .home-grid.home-quick-grid {
     grid-column: 1;
     grid-row: 2;
@@ -18573,4 +18555,134 @@ body.desktop-shell.desktop-wallpaper-mode.diy-mode #bottom-bar.stage-mode {
   body.desktop-shell.desktop-wallpaper-mode.diy-mode #bottom-bar.stage-mode {
     width: calc(100vw - var(--desktop-safe-left) - var(--desktop-safe-right) - 24px);
   }
+}
+
+/* ===== 首页设备控制卡：Halo PixelBar + F12 ===== */
+.home-device-card {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, .10);
+  background: linear-gradient(145deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, .025));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+.home-device-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.home-device-title {
+  font-size: 13px;
+  font-weight: 720;
+  color: rgba(255, 255, 255, .92);
+  letter-spacing: .01em;
+}
+.home-device-status {
+  margin-top: 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, .52);
+}
+.home-device-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.mr-color-swatch {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  background: var(--sw, #fff);
+  border: 2px solid rgba(255, 255, 255, .22);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .28);
+  transition: transform .16s, border-color .16s, box-shadow .16s;
+}
+.mr-color-swatch:hover { transform: translateY(-1px) scale(1.06); }
+.mr-color-swatch.active {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--home-accent, #7ad7c2) 60%, transparent), 0 2px 10px rgba(0, 0, 0, .3);
+}
+.home-device-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, .08);
+}
+.home-device-foot-label {
+  font-size: 12px;
+  font-weight: 640;
+  color: rgba(255, 255, 255, .74);
+}
+
+/* 通用开关（Halo 开关 / F12 开关共用） */
+.mr-switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 46px;
+  height: 26px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .18);
+  background: rgba(255, 255, 255, .10);
+  cursor: pointer;
+  transition: background .2s ease, border-color .2s ease;
+}
+.mr-switch .mr-switch-knob {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .82);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
+  transform: translateY(-50%);
+  transition: transform .2s ease, background .2s ease;
+}
+.mr-switch:hover { border-color: rgba(255, 255, 255, .30); }
+.mr-switch.on {
+  background: color-mix(in srgb, var(--home-accent, #7ad7c2) 72%, transparent);
+  border-color: color-mix(in srgb, var(--home-accent, #7ad7c2) 82%, transparent);
+}
+.mr-switch.on .mr-switch-knob {
+  transform: translateY(-50%) translateX(20px);
+  background: #fff;
+}
+.mr-switch:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--home-accent, #7ad7c2) 60%, transparent);
+  outline-offset: 2px;
+}
+
+/* 让首页 hero 纵向排布并整体可滚动：热评卡与设备卡都能完整显示 */
+#empty-home .home-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+#empty-home .home-hero::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+#empty-home .home-hero .daily-review-card {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 360px;
+}
+#empty-home .home-hero .home-device-card {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 3;
 }

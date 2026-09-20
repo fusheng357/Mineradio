@@ -174,6 +174,31 @@
               <button type="button" onclick="openHomePlayerConsole()">展开播放器控制台</button>
             </div>
           </div>
+          <div class="home-device-card" id="home-halo-card">
+            <div class="home-device-head">
+              <span class="home-device-title">花再 Halo PixelBar 歌词屏</span>
+              <button type="button" id="halo-enable-switch" class="mr-switch" role="switch"
+                      aria-checked="false" aria-label="开启 Halo PixelBar 歌词"
+                      onclick="toggleHaloPixelBarFromHome()"><span class="mr-switch-knob"></span></button>
+            </div>
+            <div class="home-device-status" id="halo-status-text">正在检测…</div>
+            <div class="home-device-colors" id="halo-color-row" aria-label="歌词颜色">
+              <button type="button" class="mr-color-swatch" data-halo-color="white" style="--sw:#ffffff" title="白" onclick="selectHaloPixelBarColor('white')"></button>
+              <button type="button" class="mr-color-swatch" data-halo-color="red" style="--sw:#ff4d4d" title="红" onclick="selectHaloPixelBarColor('red')"></button>
+              <button type="button" class="mr-color-swatch" data-halo-color="green" style="--sw:#4dff7a" title="绿" onclick="selectHaloPixelBarColor('green')"></button>
+              <button type="button" class="mr-color-swatch" data-halo-color="blue" style="--sw:#4d9fff" title="蓝" onclick="selectHaloPixelBarColor('blue')"></button>
+              <button type="button" class="mr-color-swatch" data-halo-color="yellow" style="--sw:#ffe14d" title="黄" onclick="selectHaloPixelBarColor('yellow')"></button>
+              <button type="button" class="mr-color-swatch" data-halo-color="cyan" style="--sw:#4dfff0" title="青" onclick="selectHaloPixelBarColor('cyan')"></button>
+              <button type="button" class="mr-color-swatch" data-halo-color="magenta" style="--sw:#ff4dd2" title="品红" onclick="selectHaloPixelBarColor('magenta')"></button>
+            </div>
+            <div class="home-device-foot">
+              <span class="home-device-foot-label">F12 开发者工具快捷键</span>
+              <button type="button" id="devtools-switch" class="mr-switch" role="switch"
+                      aria-checked="false" aria-label="开启 F12 开发者工具"
+                      onclick="toggleDevToolsShortcutFromHome()"><span class="mr-switch-knob"></span></button>
+            </div>
+          </div>
+
           <input id="home-dashboard-video-input" type="file" accept=".mp4,video/mp4" hidden aria-hidden="true">
         </div>
 
@@ -1522,7 +1547,7 @@
             <button id="login-provider-qq" class="qq workflow-node" type="button" data-login-provider="qq" onclick="selectLoginProviderNode('qq')"><span
                 class="provider-logo">QQ</span><b>QQ 音乐</b><small>官方扫码 / Cookie</small><span class="flow-port out" data-login-provider-output="qq" title="拖到 MR 接入口"></span></button>
             <button id="login-provider-kugou" class="kugou workflow-node" type="button" data-login-provider="kugou" onclick="selectLoginProviderNode('kugou')"><span
-                class="provider-logo">KG</span><b>酷狗音乐</b><small>官方窗口 / Cookie</small><span class="flow-port out" data-login-provider-output="kugou" title="拖到 MR 接入口"></span></button>
+                class="provider-logo">KG</span><b>酷狗音乐</b><small>概念版扫码 / Cookie</small><span class="flow-port out" data-login-provider-output="kugou" title="拖到 MR 接入口"></span></button>
             <button id="login-provider-qishui" class="qishui workflow-node" type="button" data-login-provider="qishui" onclick="selectLoginProviderNode('qishui')"><span
                 class="provider-logo">QS</span><b>汽水音乐</b><small>官方扫码 / 抖音确认</small><span class="flow-port out" data-login-provider-output="qishui" title="拖到 MR 接入口"></span></button>
           </div>

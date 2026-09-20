@@ -2562,7 +2562,10 @@ function checkProviderEntitlementBoundaryGuard() {
     fail('Kugou membership and URL resolution caches must be isolated by the full account identity and verified entitlement tier');
   }
   if (!/kugouPlaybackParamsRequireVip\(params\)/.test(kugouText) ||
-      !/const canAttemptMemberTrack = membershipRights\.canPlayVipTracks[\s\S]{0,100}membershipRights\.canPlayMusicPackageTracks/.test(kugouText) ||
+      !/const conceptPlayback = isKugouConceptMode\(\) && auth\.playbackReady/.test(kugouText) ||
+      !/const canVip = membershipRights\.canPlayVipTracks[\s\S]{0,120}membershipRights\.canPlayMusicPackageTracks[\s\S]{0,120}conceptPlayback/.test(kugouText) ||
+      !/const canAttemptMemberTrack = canVip;/.test(kugouText) ||
+      !/const effectiveQuality = conceptPlayback \? requestedQuality : kugouEffectiveQuality/.test(kugouText) ||
       !/memberTrack && !canAttemptMemberTrack/.test(kugouText) ||
       !/function kugouMembershipRights/.test(kugouText) ||
       !/function kugouEffectiveQuality/.test(kugouText) ||

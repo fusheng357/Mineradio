@@ -25,6 +25,7 @@ const {
 const { extractKugouAuth } = require('../kugou-api');
 const { qishuiCookieHasLogin } = require('../qishui-api');
 const { clearSpotifyToken } = require('../spotify-api');
+const { HaloPixelBarRuntime } = require('./halo-pixelbar-runtime');
 
 registerWallpaperEngineScheme(protocol);
 registerLocalMusicScheme(protocol);
@@ -147,6 +148,21 @@ const STARTUP_QA_USER_DATA_PATH = (() => {
 const STABLE_USER_DATA_PATH = STARTUP_QA_USER_DATA_PATH || path.join(app.getPath('appData'), APP_NAME);
 fs.mkdirSync(STABLE_USER_DATA_PATH, { recursive: true });
 app.setPath('userData', STABLE_USER_DATA_PATH);
+const APP_UI_SETTINGS_FILE = path.join(STABLE_USER_DATA_PATH, 'app-ui-settings.json');
+function readAppUiSettings() {
+  try {
+    if (fs.existsSync(APP_UI_SETTINGS_FILE)) return JSON.parse(fs.readFileSync(APP_UI_SETTINGS_FILE, 'utf8')) || {};
+  } catch (_) { /* noop */ }
+  return {};
+}
+function writeAppUiSettings(patch) {
+  try {
+    const next = Object.assign({}, readAppUiSettings(), patch || {});
+    fs.writeFileSync(APP_UI_SETTINGS_FILE, JSON.stringify(next, null, 2), 'utf8');
+    return next;
+  } catch (_) { return {}; }
+}
+let devToolsShortcutEnabled = readAppUiSettings().devToolsShortcutEnabled === true;
 const INITIAL_CACHE_SETTINGS = ensureCacheDirectories(readCacheSettings());
 const loginEasterEggGate = new LoginEasterEggGate({
   userDataPath: STABLE_USER_DATA_PATH,
@@ -162,6 +178,17 @@ process.env.MINERADIO_NATIVE_TEMP_DIR = NATIVE_HELPER_TEMP_PATH;
 systemMemory.setNativeTempPath(NATIVE_HELPER_TEMP_PATH);
 const localMusicLibrary = new LocalMusicLibrary({ userDataPath: STABLE_USER_DATA_PATH });
 const builtInPlaylistLibrary = new BuiltInPlaylistLibrary({ userDataPath: STABLE_USER_DATA_PATH });
+const haloPixelBarRuntime = new HaloPixelBarRuntime({
+  userDataPath: STABLE_USER_DATA_PATH,
+  onState: (status) => {
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('mineradio-halo-pixelbar-state', status);
+      }
+    } catch (_) { /* noop */ }
+  },
+});
+app.on('will-quit', () => { try { haloPixelBarRuntime.dispose(); } catch (_) { /* noop */ } });
 const localMusicImportCapabilities = new Map();
 const wallpaperEngineLibrary = new WallpaperEngineLibrary({ userDataPath: STABLE_USER_DATA_PATH });
 const wallpaperEngineRuntime = new WallpaperEngineRuntime({
@@ -4880,6 +4907,9 @@ ipcMain.handle('mineradio-open-update-page', async (event, value) => {
 
 ipcMain.handle('mineradio-restart-app', async () => {
   try {
+    // app.exit() 会绕过 before-quit/will-quit，必须在重启前主动把像素屏
+    // 交还给用户之前设置的内容（如时钟），否则设备会卡在最后一行歌词。
+    try { haloPixelBarRuntime.dispose(); } catch (_) { /* noop */ }
     app.relaunch();
     app.exit(0);
     return { ok: true };
@@ -4899,6 +4929,82 @@ ipcMain.handle('mineradio-desktop-lyrics-set-enabled', async (_event, enabled, p
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e.message || 'DESKTOP_LYRICS_FAILED' };
+  }
+});
+
+ipcMain.handle('mineradio-halo-pixelbar-list-devices', async () => {
+  try {
+    return haloPixelBarRuntime.listDevices();
+  } catch (e) {
+    return { ok: false, error: e.message || 'HALO_PIXELBAR_LIST_FAILED', devices: [] };
+  }
+});
+
+ipcMain.handle('mineradio-halo-pixelbar-configure', async (event, opts) => {
+  try {
+    if (!isTrustedMainWindowIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+    const status = haloPixelBarRuntime.configure(opts || {});
+    return { ok: true, status };
+  } catch (e) {
+    return { ok: false, error: e.message || 'HALO_PIXELBAR_CONFIG_FAILED' };
+  }
+});
+
+ipcMain.handle('mineradio-halo-pixelbar-send-text', async (event, text) => {
+  try {
+    if (!isTrustedMainWindowIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+    if (!haloPixelBarRuntime.connected && !haloPixelBarRuntime.connect()) {
+      return { ok: false, error: haloPixelBarRuntime.lastError || 'CONNECT_FAILED' };
+    }
+    const ok = haloPixelBarRuntime.sendText(String(text == null ? '' : text));
+    return { ok, status: haloPixelBarRuntime.getStatus() };
+  } catch (e) {
+    return { ok: false, error: e.message || 'HALO_PIXELBAR_SEND_FAILED' };
+  }
+});
+
+ipcMain.handle('mineradio-halo-pixelbar-lyric', async (_event, payload) => {
+  try {
+    const result = haloPixelBarRuntime.pushLyric(payload || {});
+    return { ok: result && result.ok === true, result };
+  } catch (e) {
+    return { ok: false, error: e.message || 'HALO_PIXELBAR_LYRIC_FAILED' };
+  }
+});
+
+ipcMain.handle('mineradio-halo-pixelbar-status', async () => {
+  try {
+    return { ok: true, status: haloPixelBarRuntime.getStatus() };
+  } catch (e) {
+    return { ok: false, error: e.message || 'HALO_PIXELBAR_STATUS_FAILED', status: null };
+  }
+});
+
+ipcMain.handle('mineradio-halo-pixelbar-set-enabled', async (event, enabled, opts) => {
+  try {
+    if (!isTrustedMainWindowIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+    const status = haloPixelBarRuntime.setEnabled(!!enabled, opts || {});
+    return { ok: true, status };
+  } catch (e) {
+    return { ok: false, error: e.message || 'HALO_PIXELBAR_SET_ENABLED_FAILED', status: haloPixelBarRuntime.getStatus() };
+  }
+});
+
+ipcMain.handle('mineradio-devtools-get-enabled', async () => {
+  return { ok: true, enabled: devToolsShortcutEnabled };
+});
+
+ipcMain.handle('mineradio-devtools-set-enabled', async (_event, enabled) => {
+  try {
+    devToolsShortcutEnabled = !!enabled;
+    writeAppUiSettings({ devToolsShortcutEnabled });
+    if (!devToolsShortcutEnabled && mainWindow && !mainWindow.isDestroyed()
+        && mainWindow.webContents.isDevToolsOpened()) {
+      mainWindow.webContents.closeDevTools();
+    }
+    return { ok: true, enabled: devToolsShortcutEnabled };
+  } catch (e) {
+    return { ok: false, error: e.message || 'DEVTOOLS_TOGGLE_FAILED', enabled: devToolsShortcutEnabled };
   }
 });
 
@@ -5684,8 +5790,15 @@ async function createWindowOnce() {
       resetMainWindowZoom(win);
       return;
     }
+    if (input.type === 'keyDown' && (input.key === 'F12' || input.code === 'F12')) {
+      event.preventDefault();
+      if (!devToolsShortcutEnabled) return;
+      if (win.webContents.isDevToolsOpened()) win.webContents.closeDevTools();
+      else win.webContents.openDevTools({ mode: 'detach' });
+      return;
+    }
     if (input.type === 'keyDown' && (input.key === 'Escape' || input.code === 'Escape')
-      && fullDesktopModeRuntime.getStatus('escape-key-input').enabled === true) {
+        && fullDesktopModeRuntime.getStatus('escape-key-input').enabled === true) {
       event.preventDefault();
       requestFullDesktopEscapeExit('escape-key');
       return;
@@ -5977,6 +6090,9 @@ if (!gotSingleInstanceLock) {
     if (appQuitCleanupComplete) return;
     event.preventDefault();
     if (appQuitCleanupPromise) return;
+    // 立即停止歌词推送，让像素屏进入“文本静默”；只有在静默期下发的切时钟指令才会被设备接受，
+    // 否则设备会一直停留在最后一行歌词（参考 HaloLyricSync：静默 30s 后才切时钟）。
+    try { haloPixelBarRuntime.suspendPushesForExit(); } catch (_) { /* noop */ }
     clearWallpaperEngineCaptureGrant();
     wallpaperEngineLibrary.dispose();
     stopMemoryAutoTimer();
@@ -6042,7 +6158,11 @@ if (!gotSingleInstanceLock) {
         console.warn('[Wallpaper Engine] dispose failed:', error && error.message || error);
       });
     })();
-    const runtimeCleanup = fullDesktopAndWallpaperEngineCleanup;
+    const runtimeCleanup = Promise.all([
+      fullDesktopAndWallpaperEngineCleanup,
+      // 与桌面/壁纸清理并行：断开前把像素屏切回时钟主题（先静默、再多次下发，确保被设备接收）。
+      haloPixelBarRuntime.restoreClockForExit().catch(() => { /* noop */ }),
+    ]);
     const timeoutCleanup = new Promise((resolve) => {
       cleanupTimeout = setTimeout(() => {
         console.warn('[Shutdown] runtime cleanup exceeded 15000ms; continuing bounded application exit.');

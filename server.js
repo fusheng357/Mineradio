@@ -82,12 +82,18 @@ const {
   handleKugouLikeCheck,
   handleKugouLikeToggle,
   handleKugouPlaylistAddSong,
-  getKugouLoginInfo,
-  normalizeKugouCookieInput,
   clearKugouSessionCaches,
   kugouCookieHasPlayback,
   extractKugouAuth,
   kugouAudioReferer,
+  getKugouLoginInfo,
+  handleKugouConceptSignIn,
+  getKugouConceptSignInState,
+  handleKugouConceptQrCreate,
+  handleKugouConceptQrCheck,
+  setKugouConceptMode,
+  isKugouConceptMode,
+  normalizeKugouCookieInput,
 } = require('./kugou-api');
 const {
   getQishuiStatus,
@@ -356,6 +362,49 @@ let kugouCookie = '';
 function saveKugouCookie(c) {
   kugouCookie = saveConfiguredCookieStore(configuredCookieStores.kugou, normalizeCookieHeader(c) || rawCookieFallback(c));
   clearKugouSessionCaches();
+}
+
+// ---- 酷狗概念版模式持久化 ----
+const KUGOU_CONCEPT_MODE_FILE = path.join(__dirname, '.kugou-concept-mode');
+function loadKugouConceptMode() {
+  try { return fs.readFileSync(KUGOU_CONCEPT_MODE_FILE, 'utf8').trim() === '1'; } catch (_) { return false; }
+}
+function applyKugouConceptMode(on, persist) {
+  setKugouConceptMode(!!on);
+  if (persist !== false) {
+    try { fs.writeFileSync(KUGOU_CONCEPT_MODE_FILE, on ? '1' : '0', 'utf8'); } catch (_) { /* noop */ }
+  }
+  return isKugouConceptMode();
+}
+applyKugouConceptMode(loadKugouConceptMode(), false);
+
+// ---- 酷狗概念版每日自动签到（领 1 天 VIP）----
+let kugouConceptSignInTimer = null;
+let kugouConceptSignInLastAt = 0;
+async function runKugouConceptSignIn(reason) {
+  try {
+    if (!kugouCookieHasPlayback(kugouCookie)) return null;
+    const now = Date.now();
+    // 非手动触发时 30 分钟内去重，避免频繁请求被风控
+    if (reason !== 'manual' && now - kugouConceptSignInLastAt < 30 * 60 * 1000) return null;
+    const result = await handleKugouConceptSignIn(kugouCookie);
+    if (result && result.ok) {
+      kugouConceptSignInLastAt = now;
+      if (typeof clearKugouSessionCaches === 'function') clearKugouSessionCaches();
+    }
+    console.log('[KugouConceptSignIn]', reason, result && result.ok ? 'ok' : ('fail:' + ((result && (result.error || result.status)) || 'unknown')), 'conceptMode=' + isKugouConceptMode());
+    return result;
+  } catch (e) {
+    console.warn('[KugouConceptSignIn] failed:', e.message);
+    return null;
+  }
+}
+function scheduleKugouConceptSignIn() {
+  if (kugouConceptSignInTimer) return;
+  // 每 6 小时尝试一次，确保每天都能领到当日 VIP
+  kugouConceptSignInTimer = setInterval(() => runKugouConceptSignIn('interval'), 6 * 60 * 60 * 1000);
+  if (typeof kugouConceptSignInTimer.unref === 'function') kugouConceptSignInTimer.unref();
+  runKugouConceptSignIn('startup');
 }
 
 let qishuiCookie = '';
@@ -5620,6 +5669,8 @@ const server = http.createServer(async (req, res) => {
       }
       saveKugouCookie(normalized);
       const info = await getKugouLoginInfo(kugouCookie);
+      runKugouConceptSignIn('login');
+      scheduleKugouConceptSignIn();
       sendJSON(res, { ...info, saved: true, partial: auth.loggedIn && !auth.playbackReady });
     } catch (err) {
       console.error('[KugouLoginCookie]', err);
@@ -5631,6 +5682,71 @@ const server = http.createServer(async (req, res) => {
   if (pn === '/api/kugou/logout') {
     saveKugouCookie('');
     sendJSON(res, { provider: 'kugou', loggedIn: false, ok: true });
+    return;
+  }
+
+
+  if (pn === '/api/kugou/concept/signin') {
+    try {
+      if (!kugouCookieHasPlayback(kugouCookie)) {
+        sendJSON(res, { provider: 'kugou', ok: false, error: 'KUGOU_AUTH_REQUIRED' });
+        return;
+      }
+      const result = await runKugouConceptSignIn('manual') || await handleKugouConceptSignIn(kugouCookie);
+      sendJSON(res, Object.assign({ state: getKugouConceptSignInState() }, result));
+    } catch (err) {
+      console.error('[KugouConceptSignIn]', err);
+      sendJSON(res, { provider: 'kugou', ok: false, error: err.message }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/kugou/concept/mode') {
+    try {
+      if (req.method === 'POST') {
+        const body = await readRequestBody(req);
+        const raw = body.enabled != null ? body.enabled : url.searchParams.get('enabled');
+        const on = String(raw) !== 'false' && String(raw) !== '0';
+        applyKugouConceptMode(on);
+        sendJSON(res, { provider: 'kugou', ok: true, conceptMode: isKugouConceptMode() });
+        return;
+      }
+      sendJSON(res, { provider: 'kugou', ok: true, conceptMode: isKugouConceptMode(), signIn: getKugouConceptSignInState() });
+    } catch (err) {
+      sendJSON(res, { provider: 'kugou', ok: false, error: err.message }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/kugou/login/qr/create') {
+    try {
+      sendJSON(res, await handleKugouConceptQrCreate(kugouCookie));
+    } catch (err) {
+      console.error('[KugouQrCreate]', err);
+      sendJSON(res, { provider: 'kugou', ok: false, error: err.message }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/kugou/login/qr/check') {
+    try {
+      const key = url.searchParams.get('key') || url.searchParams.get('qrcode') || '';
+      if (!key) { sendJSON(res, { provider: 'kugou', ok: false, error: 'MISSING_QR_KEY' }, 400); return; }
+      const result = await handleKugouConceptQrCheck(key, kugouCookie);
+      if (result.loggedIn && result.cookie) {
+        saveKugouCookie(result.cookie);
+        applyKugouConceptMode(true);
+        const info = await getKugouLoginInfo(kugouCookie);
+        runKugouConceptSignIn('login');   // 登录即签到，立刻领当日 VIP
+        scheduleKugouConceptSignIn();
+        sendJSON(res, Object.assign({}, result, info, { saved: true, conceptMode: true }));
+        return;
+      }
+      sendJSON(res, result);
+    } catch (err) {
+      console.error('[KugouQrCheck]', err);
+      sendJSON(res, { provider: 'kugou', ok: false, error: err.message }, 500);
+    }
     return;
   }
 

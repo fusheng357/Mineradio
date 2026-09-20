@@ -105,6 +105,22 @@ contextBridge.exposeInMainWorld('desktopWindow', {
   },
   setDesktopLyricsEnabled: (enabled, payload) => ipcRenderer.invoke('mineradio-desktop-lyrics-set-enabled', !!enabled, payload || {}),
   updateDesktopLyrics: (payload) => ipcRenderer.invoke('mineradio-desktop-lyrics-update', payload || {}),
+  setHaloPixelBarEnabled: (enabled, opts) => ipcRenderer.invoke('mineradio-halo-pixelbar-set-enabled', !!enabled, opts || {}),
+  getHaloPixelBarStatus: () => ipcRenderer.invoke('mineradio-halo-pixelbar-status'),
+  listHaloPixelBarDevices: () => ipcRenderer.invoke('mineradio-halo-pixelbar-list-devices'),
+  configureHaloPixelBar: (opts) => ipcRenderer.invoke('mineradio-halo-pixelbar-configure', opts || {}),
+  sendHaloPixelBarText: (text) => ipcRenderer.invoke('mineradio-halo-pixelbar-send-text', String(text == null ? '' : text)),
+  pushHaloPixelBarLyric: (payload) => ipcRenderer.invoke('mineradio-halo-pixelbar-lyric', payload || {}),
+  onHaloPixelBarState: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, payload) => callback(payload || {});
+    ipcRenderer.on('mineradio-halo-pixelbar-state', listener);
+    return () => ipcRenderer.removeListener('mineradio-halo-pixelbar-state', listener);
+  },
+  getDevToolsEnabled: () => ipcRenderer.invoke('mineradio-devtools-get-enabled'),
+  setDevToolsEnabled: (enabled) => ipcRenderer.invoke('mineradio-devtools-set-enabled', !!enabled),
+
+  
   onDesktopLyricsLockState: (callback) => {
     if (typeof callback !== 'function') return () => {};
     const listener = (_event, payload) => callback(payload || {});
