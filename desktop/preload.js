@@ -159,6 +159,13 @@ contextBridge.exposeInMainWorld('desktopWindow', {
     ipcRenderer.on('desktop-window-state', listener);
     return () => ipcRenderer.removeListener('desktop-window-state', listener);
   },
+  updateTrayPlaybackState: (state) => ipcRenderer.send('mineradio-tray-update-playback-state', state || {}),
+  onTrayMediaCommand: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, payload) => callback(payload || {});
+    ipcRenderer.on('mineradio-tray-media-command', listener);
+    return () => ipcRenderer.removeListener('mineradio-tray-media-command', listener);
+  },
 });
 
 window.addEventListener('DOMContentLoaded', () => {

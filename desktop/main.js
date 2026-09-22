@@ -65,12 +65,14 @@ let memoryAutoState = {
   lastResult: null,
   lastError: '',
 };
-let closeBehavior = 'exit';
+let closeBehavior = 'ask';
 let appQuitting = false;
 let appQuitCleanupPromise = null;
 let appQuitCleanupComplete = false;
 let mainWindowCloseFlushArmed = false;
 let tray = null;
+let trayPlaybackState = { title: '', artist: '', playing: false, hasTrack: false };
+let trayCloseDialogShowing = false;
 let startupCompleted = false;
 let startupErrorReported = false;
 let localServerStartPromise = null;
@@ -2093,7 +2095,9 @@ async function runMemoryAutoTick(reason = 'auto') {
 }
 
 function normalizeCloseBehavior(value) {
-  return value === 'tray' ? 'tray' : 'exit';
+  if (value === 'tray') return 'tray';
+  if (value === 'exit') return 'exit';
+  return 'ask';
 }
 
 function resetMainWindowZoom(win = mainWindow) {
@@ -2133,6 +2137,21 @@ function focusMainWindow() {
   return true;
 }
 
+function trayPlaybackLabel() {
+  if (!trayPlaybackState.hasTrack) return '未在播放';
+  const title = trayPlaybackState.title || '未知曲目';
+  const artist = trayPlaybackState.artist ? ` - ${trayPlaybackState.artist}` : '';
+  const text = `${title}${artist}`;
+  return text.length > 40 ? `${text.slice(0, 38)}…` : text;
+}
+
+function sendTrayMediaCommand(command) {
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.webContents || mainWindow.webContents.isDestroyed()) return;
+  try {
+    mainWindow.webContents.send('mineradio-tray-media-command', { command });
+  } catch (_) { /* noop */ }
+}
+
 function createOrUpdateTray() {
   if (process.platform !== 'win32' && process.platform !== 'linux') return;
   if (!tray) {
@@ -2150,6 +2169,15 @@ function createOrUpdateTray() {
   const desktopMode = fullDesktopModeRuntime.getStatus('tray-menu');
   const menu = Menu.buildFromTemplate([
     { label: `显示 ${APP_NAME}`, click: () => focusMainWindow() },
+    { type: 'separator' },
+    { label: trayPlaybackLabel(), enabled: false },
+    { type: 'separator' },
+    {
+      label: trayPlaybackState.playing ? '暂停' : '播放',
+      click: () => sendTrayMediaCommand(trayPlaybackState.playing ? 'pause' : 'play'),
+    },
+    { label: '上一首', click: () => sendTrayMediaCommand('prev') },
+    { label: '下一首', click: () => sendTrayMediaCommand('next') },
     {
       label: '退出完整桌面模式',
       visible: desktopMode.enabled === true,
@@ -2167,6 +2195,10 @@ function createOrUpdateTray() {
     },
   ]);
   tray.setContextMenu(menu);
+  const tooltipText = trayPlaybackState.hasTrack
+    ? `${APP_NAME}\n${trayPlaybackLabel()}`
+    : APP_NAME;
+  try { tray.setToolTip(tooltipText); } catch (_) { /* noop */ }
 }
 
 function ensureFullDesktopModeRecoveryTray() {
@@ -4763,6 +4795,21 @@ ipcMain.handle('desktop-window-set-close-behavior', (_event, behavior) => {
   return { ok: true, behavior: closeBehavior };
 });
 
+ipcMain.on('mineradio-tray-update-playback-state', (event, payload) => {
+  if (!isTrustedMainWindowIpc(event)) return;
+  const title = String(payload && payload.title || '').slice(0, 200);
+  const artist = String(payload && payload.artist || '').slice(0, 200);
+  const playing = !!(payload && payload.playing);
+  const hasTrack = !!(payload && payload.hasTrack);
+  const changed = trayPlaybackState.title !== title
+    || trayPlaybackState.artist !== artist
+    || trayPlaybackState.playing !== playing
+    || trayPlaybackState.hasTrack !== hasTrack;
+  if (!changed) return;
+  trayPlaybackState = { title, artist, playing, hasTrack };
+  if (tray) createOrUpdateTray();
+});
+
 ipcMain.handle('mineradio-hotkeys-configure-global', (_event, bindings) => {
   return configureMineradioGlobalHotkeys(bindings);
 });
@@ -5909,6 +5956,44 @@ async function createWindowOnce() {
         win.hide();
         sendWindowState(win);
         scheduleAppMemoryTrim('tray-hide', 2200);
+      });
+      return;
+    }
+    if (!appQuitting && closeBehavior === 'ask' && !trayCloseDialogShowing) {
+      event.preventDefault();
+      win.__mineradioDesktopModeCloseArmed = false;
+      trayCloseDialogShowing = true;
+      dialog.showMessageBox(win, {
+        type: 'question',
+        buttons: ['最小化到托盘', '退出应用', '取消'],
+        defaultId: 0,
+        cancelId: 2,
+        title: APP_NAME,
+        message: '关闭操作',
+        detail: '您希望将应用最小化到系统托盘，还是直接退出？',
+      }).then(({ response }) => {
+        trayCloseDialogShowing = false;
+        if (win.isDestroyed()) return;
+        if (response === 0) {
+          createOrUpdateTray();
+          win.__mineradioIntentionalHide = true;
+          markMainWindowExpectedVisible(win, false, 'tray-hide');
+          flushMainWindowFxAutosave('tray-hide').finally(() => {
+            if (win.isDestroyed()) return;
+            win.hide();
+            sendWindowState(win);
+            scheduleAppMemoryTrim('tray-hide', 2200);
+          });
+        } else if (response === 1) {
+          appQuitting = true;
+          mainWindowCloseFlushArmed = true;
+          flushMainWindowFxAutosave('main-close').finally(() => {
+            if (win.isDestroyed()) return;
+            win.close();
+          });
+        }
+      }).catch(() => {
+        trayCloseDialogShowing = false;
       });
       return;
     }

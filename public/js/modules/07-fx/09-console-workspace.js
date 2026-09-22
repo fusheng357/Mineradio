@@ -257,7 +257,7 @@ var FX_CONSOLE_LAYOUT = [
     key: 'system',
     groups: [
       { key: 'startup', title: '启动与退出', hint: '关闭窗口行为和恢复播放方式', open: true, items: [
-        fxConsoleItem('close-behavior-seg', '关闭窗口', '直接退出 后台托盘'),
+        fxConsoleItem('close-behavior-seg', '关闭窗口', '询问 后台托盘 直接退出 最小化 托盘'),
         fxConsoleItem('t-startupAutoplay', '启动自动播放', '打开软件继续播放'),
         fxConsoleItem('t-startupFastSkip', '秒启动跳过启动页', '快速启动'),
         fxConsoleItem('startup-resume-mode-seg', '恢复播放位置', '按上次进度 重播整首')

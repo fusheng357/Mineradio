@@ -55,6 +55,11 @@ var loginStatusChecked = false, loginStatusCheckFailed = false;
 var qrPollTimer = null, qrKey = null;
 var qishuiQrPollBusy = false, qishuiQrPollGeneration = 0;
 var kugouConceptQrBusy = false, kugouConceptQrPollBusy = false, kugouConceptQrPollGeneration = 0;
+var KUGOU_LOGIN_METHOD_STORE_KEY = 'mineradio-kugou-login-method-v1';
+var kugouLoginMethod = (function () {
+  try { return localStorage.getItem(KUGOU_LOGIN_METHOD_STORE_KEY) === 'standard' ? 'standard' : 'concept'; }
+  catch (e) { return 'concept'; }
+})();
 var volumeTween = null, trackSwitchToken = 0;
 var audioFadeTimer = null, audioElementFadeFrame = 0, audioFadeSerial = 0;
 var playbackResumeRecovery = { serial: 0, pending: false, lastAttemptAt: 0, lastReason: '', pausedAt: 0, pausedSongKey: '', pausedSrc: '', pausedPosition: 0, timerIds: [] };
@@ -149,7 +154,7 @@ var CONTROLS_AUTO_HIDE_STORE_KEY = 'mineradio-controls-auto-hide-v1';
 var FREE_CAMERA_STORE_KEY = 'mineradio-free-camera-v1';
 var HOTKEY_SETTINGS_STORE_KEY = 'mineradio-hotkey-settings-v1';
 var VISUAL_GUIDE_SEEN_STORE_KEY = 'mineradio-visual-guide-seen-v2';
-var CLOSE_BEHAVIOR_STORE_KEY = 'mineradio-close-behavior-v1';
+var CLOSE_BEHAVIOR_STORE_KEY = 'mineradio-close-behavior-v2';
 var LAST_PLAYBACK_STORE_KEY = 'mineradio-last-playback-v1';
 var STARTUP_AUTOPLAY_STORE_KEY = 'mineradio-startup-autoplay-v1';
 var STARTUP_FAST_SKIP_STORE_KEY = 'mineradio-startup-fast-skip-v1';

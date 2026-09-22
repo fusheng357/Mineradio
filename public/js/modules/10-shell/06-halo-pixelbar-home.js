@@ -3,10 +3,16 @@
 var haloHomeState = {
   enabled: false,
   color: 'white',
+  restoreUiModel: 'clock',
   supported: true,
   connected: false,
   devTools: false,
   bound: false,
+};
+
+var HALO_THEME_LABELS = {
+  clock: '时钟', game: '游戏', work: '工作', read: '阅读',
+  cats: '猫咪', dogs: '狗狗', memes: '表情', cyber: '赛博', waves: '波浪',
 };
 
 function haloHomeApi() {
@@ -35,6 +41,8 @@ function haloHomeRender() {
     dt.classList.toggle('on', !!haloHomeState.devTools);
     dt.setAttribute('aria-checked', haloHomeState.devTools ? 'true' : 'false');
   }
+  var themeSel = document.getElementById('halo-theme-select');
+  if (themeSel) themeSel.value = haloHomeState.restoreUiModel || '';
 }
 
 function haloHomeApplyStatus(status) {
@@ -43,6 +51,9 @@ function haloHomeApplyStatus(status) {
   haloHomeState.supported = !!status.supported;
   haloHomeState.connected = !!status.connected;
   if (status.settings && status.settings.color) haloHomeState.color = status.settings.color;
+  if (status.settings && status.settings.restoreUiModel != null) {
+    haloHomeState.restoreUiModel = status.settings.restoreUiModel || '';
+  }
   haloHomeRender();
 }
 
@@ -90,6 +101,58 @@ function selectHaloPixelBarColor(color) {
   }
 }
 
+// 选择暂停/退出时切回的设备自带主题（UI 模式包：时钟/游戏/工作/阅读/猫咪/狗狗/表情/赛博/波浪；''=仅清屏）。
+function selectHaloPixelBarTheme(model) {
+  var next = String(model == null ? '' : model);
+  haloHomeState.restoreUiModel = next;
+  haloHomeRender();
+  var api = haloHomeApi();
+  if (api && typeof api.configureHaloPixelBar === 'function') {
+    api.configureHaloPixelBar({ restoreUiModel: next }).then(function (res) {
+      haloHomeApplyStatus(res && res.status);
+      if (typeof showToast === 'function') {
+        showToast(next ? ('已设置切回主题：' + (HALO_THEME_LABELS[next] || next)) : '已设置暂停/退出仅清屏');
+      }
+    }).catch(function () { });
+  }
+}
+
+// ===== 顶部小音箱按钮 + 浮层面板（放在登录按钮旁，对齐 nxz1026/Mineradio 的交互） =====
+function setHaloPanelOpen(open) {
+  var panel = document.getElementById('halo-panel');
+  var fab = document.getElementById('halo-fab');
+  if (!panel) return;
+  panel.classList.toggle('show', !!open);
+  panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+  if (fab) {
+    fab.classList.toggle('active', !!open);
+    fab.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  // 打开时刷新一次状态，确保开关/颜色/连接信息与主进程一致。
+  if (open) { haloHomeRefreshStatus(); haloHomeInitDevTools(); }
+}
+
+function toggleHaloPanel(evt) {
+  if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
+  var panel = document.getElementById('halo-panel');
+  setHaloPanelOpen(!(panel && panel.classList.contains('show')));
+}
+
+function bindHaloPanelDismiss() {
+  document.addEventListener('click', function (e) {
+    var panel = document.getElementById('halo-panel');
+    if (!panel || !panel.classList.contains('show')) return;
+    var fab = document.getElementById('halo-fab');
+    if (panel.contains(e.target) || (fab && fab.contains(e.target))) return;
+    setHaloPanelOpen(false);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var panel = document.getElementById('halo-panel');
+    if (panel && panel.classList.contains('show')) setHaloPanelOpen(false);
+  });
+}
+
 function toggleDevToolsShortcutFromHome() {
   var api = haloHomeApi();
   if (!api || typeof api.setDevToolsEnabled !== 'function') return;
@@ -104,6 +167,7 @@ function toggleDevToolsShortcutFromHome() {
 function bindHaloPixelBarHome() {
   if (haloHomeState.bound) return;
   haloHomeState.bound = true;
+  bindHaloPanelDismiss();
   haloHomeInitDevTools();
   haloHomeRefreshStatus();
   var api = haloHomeApi();
