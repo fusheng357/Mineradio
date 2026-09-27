@@ -1455,7 +1455,9 @@ function tickHaloPixelBarSync() {
   if (now - haloPixelBarLastPushAt < 200) return;
   var lyric = currentDesktopLyricSnapshot();
   var meta = currentDesktopSongMeta();
-  var key = meta.title + '|' + meta.artist + '|' + lyric.text;
+  // key 带上播放状态：暂停/恢复的瞬间立即推送（不受同文本 900ms 去抖限制），
+  // 保证暂停后尽快切到主题、恢复播放后尽快切回歌词。
+  var key = meta.title + '|' + meta.artist + '|' + lyric.text + '|' + (playing ? '1' : '0');
   if (key === haloPixelBarLastKey && now - haloPixelBarLastPushAt < 900) return;
   haloPixelBarLastPushAt = now;
   haloPixelBarLastKey = key;
